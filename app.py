@@ -37,7 +37,7 @@ from openai import OpenAI  # 從openai模組引入OpenAI類別
 import base64
 
 
-running_on_render=os.getenv("render")  #是否在render.com上運行
+running_on_render=os.getenv("RENDER")  #是否在render.com上運行
 print("現在是在render上運行嗎?", running_on_render)
 
 if not running_on_render: # 如果不在render.com上運行, 才讀取本地端的.env

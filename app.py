@@ -28,6 +28,26 @@ from modules.reply import faq, menu  #引用的流程, 引用其他位置的檔�
 
 import os
 
+import requests
+
+from dotenv import load_dotenv
+
+from openai import OpenAI  # 從openai模組引入OpenAI類別
+
+import base64
+
+
+running_on_render=os.getenv("render")  #是否在render.com上運行
+print("現在是在render上運行嗎?", running_on_render)
+
+if not running_on_render: # 如果不在render.com上運行, 才讀取本地端的.env
+    load_dotenv() # 載入環境變數
+
+client = OpenAI(
+     api_key=os.getenv("OPENAI_API_KEY")   # os.getenv 是寫給render. # 要用dotenv抓本地端的API_KEY
+
+)
+
 app = Flask(__name__)
 
 # Line Channel 可於 Line Developer Console 申辦
@@ -36,6 +56,7 @@ app = Flask(__name__)
 # TODO: 填入你的 CHANNEL_SECRET 與 CHANNEL_ACCESS_TOKEN
 CHANNEL_SECRET = os.getenv("CHANNEL_SECRET") # gained from LINE DEVELOPERS後台
 CHANNEL_ACCESS_TOKEN = os.getenv("CHANNEL_ACCESS_TOKEN")
+OPENAI_API_KEY=os.getenv("OPENAI_API_KEY")
 
 handler = WebhookHandler(CHANNEL_SECRET)
 configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
@@ -71,12 +92,31 @@ def handle_message(event):
         user_msg = event.message.text  #來自使用者傳的訊息
         print("使用者傳入的文字訊息是:", user_msg)
         # 使用TextMessage產生一段用於回應使用者的Line文字訊息
-        bot_msg = TextMessage(text=f"你剛才說的是: {user_msg}")
+        bot_msg = TextMessage(text=f"Hi, 你剛才說的是: {user_msg}")
 
         if user_msg in faq: #使用者打的文字在faq內作為key, 就把value當作回應
             bot_msg=faq[user_msg] #用字典的語法, 用到key, 提取相對應的value
         elif user_msg.lower() in ["menu", "選單", "主選單"]: #user輸入左列關鍵字, 則跳出卡片選單
             bot_msg=menu
+        else: #如果不在上述考慮過的回應, 就使用openai回答
+            completion = client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                     {
+                         "role":"system",
+                         "content":"""
+You are a funny person, reply message in tradicitonal chinese.
+使用純文字而不是Markdown格式.
+""",
+                     },
+                     {
+                        "role": "user",
+                        "content": user_msg
+                     }
+                ]
+            )
+
+            bot_msg=TextMessage(text=completion.choices[0].message.content) # 從回應中取得生成的文字並包裝成TextMessage
         
 
         line_bot_api.reply_message_with_http_info(
@@ -141,6 +181,86 @@ def handle_location_message(event):
                 ]
             )
         )
+
+# 此處理器負責處理接收到Line Server傳來的圖片訊息時的流程
+@handler.add(MessageEvent, message=ImageMessageContent)
+def handle_image_message(event):
+    with ApiClient(configuration) as api_client:
+        print("event.message裏面有什麼", event.message.id)
+        message_id = event.message.id
+        # 當使用者傳入圖片時
+        line_bot_api = MessagingApi(api_client)
+
+        # 使用requests获取图片内容
+        headers = {
+            'Authorization': f'Bearer {CHANNEL_ACCESS_TOKEN}'
+        }
+        image_url = f'https://api-data.line.me/v2/bot/message/{message_id}/content'
+        response = requests.get(image_url, headers=headers)
+        
+        if response.status_code == 200:
+            # 将图片内容转换为BASE64
+            image_base64 = base64.b64encode(response.content).decode('utf-8')
+            #print("成功获取图片并转换为BASE64")
+            
+            # 使用OpenAI的视觉模型分析图片
+            try:
+                completion = client.chat.completions.create(
+                    model="gpt-4o",
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": "請用繁體中文簡單描述這張圖片中看到的內容。"
+                                },
+                                {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:image/jpeg;base64,{image_base64}"
+                                    }
+                                }
+                            ]
+                        }
+                    ],
+                    max_tokens=300
+                )
+                
+                # 获取AI的描述
+                ai_description = completion.choices[0].message.content
+                print("AI的描述：", ai_description)
+                
+                # 回复用户
+                line_bot_api.reply_message_with_http_info(
+                    ReplyMessageRequest(
+                        reply_token=event.reply_token,
+                        messages=[
+                            TextMessage(text=f"我看到的內容是：\n{ai_description}")
+                        ]
+                    )
+                )
+                
+            except Exception as e:
+                print(f"OpenAI API调用失败：{str(e)}")
+                line_bot_api.reply_message_with_http_info(
+                    ReplyMessageRequest(
+                        reply_token=event.reply_token,
+                        messages=[
+                            TextMessage(text="抱歉，我現在無法分析這張圖片。")
+                        ]
+                    )
+                )
+        else:
+            print(f"获取图片失败，状态码：{response.status_code}")
+            line_bot_api.reply_message_with_http_info(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=[
+                        TextMessage(text="抱歉，我無法獲取這張圖片。")
+                    ]
+                )
+            )
 
 # 如果應用程式被執行執行
 if __name__ == "__main__":

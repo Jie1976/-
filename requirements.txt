@@ -3,3 +3,4 @@ flask
 pyquery
 gunicorn
 openai
+python-dotenv

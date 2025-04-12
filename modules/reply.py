@@ -146,7 +146,7 @@ menu = TemplateMessage(
                     ),
                     URIAction(
                         label="課程資訊",
-                        uri="https://"
+                        uri="https://facebook.com"
                     )
                 ]
             ),

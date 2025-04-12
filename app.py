@@ -43,6 +43,8 @@ print("現在是在render上運行嗎?", running_on_render)
 if not running_on_render: # 如果不在render.com上運行, 才讀取本地端的.env
     load_dotenv() # 載入環境變數
 
+print("OPENAI_API_KEY:", os.getenv("OPENAI_API_KEY"))
+
 client = OpenAI(
      api_key=os.getenv("OPENAI_API_KEY")   # os.getenv 是寫給render. # 要用dotenv抓本地端的API_KEY
 
@@ -56,7 +58,7 @@ app = Flask(__name__)
 # TODO: 填入你的 CHANNEL_SECRET 與 CHANNEL_ACCESS_TOKEN
 CHANNEL_SECRET = os.getenv("CHANNEL_SECRET") # gained from LINE DEVELOPERS後台
 CHANNEL_ACCESS_TOKEN = os.getenv("CHANNEL_ACCESS_TOKEN")
-OPENAI_API_KEY=os.getenv("OPENAI_API_KEY")
+
 
 handler = WebhookHandler(CHANNEL_SECRET)
 configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
